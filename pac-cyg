@@ -1,0 +1,612 @@
+#!/bin/sh
+set -e
+#
+# pac-cyg --- Install tool for cygwin similar to archlinux pacman
+#
+# Copyright (C) 2014 10sr
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# (http://www.fsf.org/licensing/licenses/gpl.html)
+
+
+
+_mirrorlist_path=/etc/pac-cyg.mirrorlist
+_version=0.1
+_vardir=/var/lib/pac-cyg
+_cachedir=/var/cache/pac-cyg
+_arch=
+
+# newline separated mirrorlist
+_mirrorlist_default="# <name> <url>
+main http://mirrors.kernel.org/sourceware/cygwin"
+
+##########################33
+# Utilities
+
+_msg(){
+    echo ":: $*"
+}
+
+_warn(){
+    echo ":: $*" 1>&2
+}
+
+_die(){
+    _warn "$@"
+    exit 1
+}
+
+_detect_arch(){
+    [ $HOSTTYPE = x86_64 ] && echo x86_64 || echo x86
+}
+
+_download(){
+    # _download <url> <path>
+    if type wget >/dev/null 2>&1
+    then
+        wget "$1" -O "$2" # -N
+    elif  type curl >/dev/null 2>&1
+    then
+        curl --url "$1" --output "$2"
+    fi
+}
+
+_get_cache_dir(){
+    # _get_cache_dir <mirror_url>
+    # get cache directory for mirror_url
+    __mirror_dir="$__cachedir/`echo $1 | sed -e 's|/|%2f|g s|:|%3a|g'`"
+    mkdir -p "_mirror_dir"
+    echo "_mirror_dir"
+}
+
+_get_var_dir(){
+    # _get_var_dir <mirror_url>
+    # get var directory for mirror_url
+    __mirror_dir="$__vardir/`echo $1 | sed -e 's|/|%2f|g s|:|%3a|g'`"
+    mkdir -p "_mirror_dir"
+    echo "_mirror_dir"
+}
+
+_check_prepare_mirrorlist(){
+    # check if $_mirrorlist_path exits, and create newly if not yet with default
+    # value $_mirrorlist_default
+    # TODO: check if mirrorlist is in valid format
+    if test -e $_mirrorlist_path
+    then
+        return
+    fi
+    _msg $_mirrorlist_path not exists yet. creating it
+    echo "$_mirrorlist_default" >$_mirrorlist_path
+}
+
+_cat_mirrorlist(){
+    # cat mirrorlist with invalid line stripped
+    grep -v '^#' $_mirrorlist_path | grep '^\w\+\W\+\w\+\W\+$'
+}
+
+
+##############################
+# install packages
+
+do_sync(){
+    __opts=$1
+    shift
+    for __opt in `echo "$__opts" | sed -e 's/\(.\)/\1 /g'`
+    do
+        # iterate by one chars
+        case $__opt in
+            s) __search=1;;
+            y) __update=1;;
+            u) __upgrade=1;;
+            i) __info=1;;
+            *) do_help; return 1;;
+        esac
+        echo opt: $__opt
+    done
+
+    if test -n "$__update"
+    then
+        _cat_mirrorlist | while read repname url
+        do
+            _update_pkglist $url
+        done
+    fi
+
+    if test -n "$__upgrade"
+    then
+        _warn Updating feature is not supported yet. Use setup.exe .
+    fi
+
+    if test -n "$__search"
+    then
+        _cat_mirrorlist | while read repname url
+        do
+            for pkg in "$@"
+            do
+                awk '$1 ~ query && $0 = $1' RS='\n\n@ ' FS='\n' query="$pkg" \
+                    `_get_var_dir $url`/setup.ini
+            done
+        done
+    else
+        _cat_mirrorlist | while read repname url
+        do
+            for pkg in "$@"
+            do
+                awk '$1 ~ query && $0 = $1' RS='\n\n@ ' FS='\n' query="$pkg" \
+                    `_get_var_dir $url`/setup.ini
+            done
+        done
+    fi
+
+}
+
+_update_pkglist()
+{
+    # _update_pkglist <mirror>
+    # TODO: use md5.sum to check if updated
+    __dir=`_get_var_dir $1`
+    if _download $1/$_arch/setup.bz2 $__dir/_setup.bz2 && \
+        test -e $__dir/_setup.bz2
+    then
+        bunzip2 $__dir/_setup.bz2
+        mv $__dir/_setup $__dir/setup.ini
+        _msg Package list updated
+    elif _download $1/$_arch/setup.ini $__dir/_setup.ini && \
+        test -e $__dir/_setup.ini
+    then
+        mv $__dir/_setup.ini $__dir/setup.ini
+        _msg Package list updated
+    else
+        _die Error updating package list
+    fi
+}
+
+_installed_db_path=$_vardir/installed.lst
+
+_is_installed(){
+    # _is_installed pkg
+    # fail if pkg is not installed yet
+    grep "^$1" $_installed_db_path >/dev/null 2>&1
+}
+
+_install(){
+    # _install pkg mirror
+    # this function does not check if pkg is already installed
+    # use _is_installed to check it
+    __dir=$_vardir
+    __pkgdir=$__dir/release/$pkg
+    mkdir -p $__pkgdir
+    _cat_mirrorlist | while read repname mirror
+    do
+        awk '
+            $1 == package {
+                desc = $0
+                px++
+            }
+            END {
+                if (px == 1 && desc) print desc
+                else print "Package not found"
+            }
+        ' RS='\n\n@ ' FS='\n' package="$pkg" `_get_var_dir $mirror`/setup.ini \
+            > "$__pkgdir/desc"
+    if test "`cat $__pkgdir/desc`" = 'Package not found'
+    then
+        _msg $pkg is not found in $mirror
+        rm -r $__pkgdir
+        continue
+    fi
+
+
+    # download and unpack the bz2 or xz file
+
+    # pick the latest version, which comes first
+    __arch_path=$(awk '/^install: / {print $2; exit}' "$__pkgdir/desc")
+
+    if test -z "$__arch_path"
+    then
+        _msg Cannot find archive file for $pkg in $mirror
+        continue
+    fi
+
+    __md5sum=$(awk '/^install: / {print $4; exit}' $__pkgdir/desc)
+    __filebase=`basename $__arch_path`
+    __file=`_get_cache_dir $mirror`/$__filebase
+
+    if test -e $__file -a $(md5sum $__file | awk NF=1) = $__md5sum
+    then
+        _msg $__filebase already downloaded. skip
+    elif _download $mirror/$__arch_path $__file && \
+        test $(md5sum $__file | awk NF=1) = $__md5sum
+    then
+        true
+    else
+        _msg downloading $__filebase failed
+        return 1
+    fi
+
+    echo "Unpacking $filebase ..."
+    tar xvf $file -C / > "$__pkgdir/file.lst"
+
+
+    # update the package database
+    awk '
+    ins != 1 && pkg < $1 {
+      printf "%s %s 0\n", pkg, bz
+      ins=1
+    }
+    1
+    END {
+      if (ins != 1) printf "%s %s 0\n", pkg, bz
+    }
+    ' pkg="$pkg" bz=$file $_installed_db_path > /tmp/awk.$$
+    mv $_installed_db_path{,.bak}
+    mv /tmp/awk.$$ $_installed_db_path
+}
+
+
+
+
+##############################
+# query installed
+
+do_query(){
+    __opts=$1
+    shift
+    for __opt in `echo "$__opts" | sed -e 's/\(.\)/\1 /g'`
+    do
+        # iterate by one chars
+        case $__opt in
+            s) __search=1;;
+            i) __info=1;;
+            *) do_help; return 1;;
+        esac
+        echo opt: $__opt
+    done
+
+    if test -n "search"
+    then
+        for pkg in "$@"
+        do
+            awk 'NR>1 && $1~query && $0=$1' query="$pkg" $_installed_db_path
+        done
+    fi
+
+
+}
+
+
+###############################
+# remove packages
+
+do_remove(){
+    __opts=$1
+    shift
+    for __opt in `echo "$__opts" | sed -e 's/\(.\)/\1 /g'`
+    do
+        # iterate by one chars
+        case $__opt in
+            s) __recursive=1;;
+            *) do_help; return 1;;
+        esac
+        echo opt: $__opt
+    done
+
+}
+
+############################
+# help
+
+function do_help()
+{
+    cat <<__EOC__
+usage: pac-cyg <operation> [<option> ...] [<target> ...]
+
+Operations:
+    -S
+__EOC__
+}
+
+
+########################
+# version
+
+function do_version()
+{
+  echo pac-cyg v$_version
+}
+
+
+######################################3
+# main
+
+main(){
+    _check_prepare_mirrorlist
+
+    __ope=
+    __opts=
+
+    while getopts SQRVsyuh opt
+    do
+        case "$opt" in
+            S) __ope=sync;;
+            Q) __ope=query;;
+            R) __ope=remove;;
+            V) __ope=version;;
+            s|y|u) __opts="$__opts$opt";;
+            h) do_help; return 0;;
+            *) do_help; return 1;;
+        esac
+    done
+
+    shift `expr $OPTIND - 1`
+
+    # echo $__ope
+    # echo $__opt
+    # echo "$@"
+    # exit 1
+    case "$__ope" in
+        sync) do_sync "$__opts" "$@";;
+        query) do_query "$__opts" "$@";;
+        remove) do_remove "$__opts" "$@";;
+        version) do_version "$__opts" "$@";;
+        *) do_help "$__opts" "$@";;
+    esac
+}
+
+_arch=`_detect_arch`
+main "$@"
+
+exit 0
+
+case "$command" in
+
+  update)
+    findworkspace
+    getsetup
+  ;;
+
+  show)
+    echo The following packages are installed: >&2
+    awk 'NR>1 && $0=$1' /etc/setup/installed.db
+  ;;
+
+  find)
+    checkpackages
+    findworkspace
+    getsetup
+    for pkg in $packages
+    do
+      echo
+      echo Searching for installed packages matching $pkg:
+      awk 'NR>1 && $1~query && $0=$1' query="$pkg" /etc/setup/installed.db
+      echo
+      echo Searching for installable packages matching $pkg:
+      awk '$1 ~ query && $0 = $1' RS='\n\n@ ' FS='\n' query="$pkg" setup.ini
+    done
+  ;;
+
+  describe)
+    checkpackages
+    findworkspace
+    getsetup
+    for pkg in $packages
+    do
+      echo
+      awk '$1 ~ query {print $0 "\n"}' RS='\n\n@ ' FS='\n' query="$pkg" setup.ini
+    done
+  ;;
+
+  packageof)
+    checkpackages
+    for pkg in $packages
+    do
+      key=$(type -P "$pkg" | sed s./..)
+      if (( ! ${#key} ))
+      then
+        key=$pkg
+      fi
+      for manifest in /etc/setup/*.lst.gz
+      do
+        found=$(gzip -cd $manifest | grep -c "$key")
+        if (( found ))
+        then
+          package=$(sed '
+          s,/etc/setup/,,
+          s,.lst.gz,,
+          ' <<< $manifest)
+          echo Found $key in the package $package
+        fi
+      done
+    done
+  ;;
+
+  install)
+    checkpackages
+    findworkspace
+    getsetup
+    for pkg in $packages
+    do
+
+    already=`grep -c "^$pkg " /etc/setup/installed.db`
+    if (( already ))
+    then
+      echo Package $pkg is already installed, skipping
+      continue
+    fi
+    echo
+    echo Installing $pkg
+
+    # look for package and save desc file
+
+    mkdir -p "release/$pkg"
+    awk '
+    $1 == package {
+      desc = $0
+      px++
+    }
+    END {
+      if (px == 1 && desc) print desc
+      else print "Package not found"
+    }
+    ' RS='\n\n@ ' FS='\n' package="$pkg" setup.ini > "release/$pkg/desc"
+    desc=$(<"release/$pkg/desc")
+    if [[ $desc = 'Package not found' ]]
+    then
+      echo Package $pkg not found or ambiguous name, exiting
+      rm -r "release/$pkg"
+      exit 1
+    fi
+    echo Found package $pkg
+
+    # download and unpack the bz2 or xz file
+
+    # pick the latest version, which comes first
+    install=$(awk '/^install: / {print $2; exit}' "release/$pkg/desc")
+
+    if (( ! ${#install} ))
+    then
+      echo 'Could not find "install" in package description: obsolete package?'
+      exit 1
+    fi
+
+    file=`basename $install`
+    cd "release/$pkg"
+    wget -nc $mirror/$install
+
+    # check the md5
+    digest=$(awk '/^install: / {print $4; exit}' desc)
+    digactual=$(md5sum $file | awk NF=1)
+    if [ $digest != $digactual ]
+    then
+      echo MD5 sum did not match, exiting
+      exit 1
+    fi
+
+    echo "Unpacking..."
+    tar xvf $file -C / > "/etc/setup/$pkg.lst"
+    gzip -f "/etc/setup/$pkg.lst"
+    cd ../..
+
+    # update the package database
+
+    awk '
+    ins != 1 && pkg < $1 {
+      printf "%s %s 0\n", pkg, bz
+      ins=1
+    }
+    1
+    END {
+      if (ins != 1) printf "%s %s 0\n", pkg, bz
+    }
+    ' pkg="$pkg" bz=$file /etc/setup/installed.db > /tmp/awk.$$
+    mv /etc/setup/installed.db /etc/setup/installed.db-save
+    mv /tmp/awk.$$ /etc/setup/installed.db
+
+    # recursively install required packages
+
+    requires=$(awk '
+    $0 ~ rq {
+      sub(rq, "")
+      print
+    }
+    ' rq='^requires: ' "release/$pkg/desc")
+    warn=0
+    if (( ${#requires} ))
+    then
+      echo Package $pkg requires the following packages, installing:
+      echo $requires
+      for package in $requires
+      do
+        already=`grep -c "^$package " /etc/setup/installed.db`
+        if (( already ))
+        then
+          echo Package $package is already installed, skipping
+          continue
+        fi
+        apt-cyg --noscripts install $package
+        (( $? && warn++ ))
+      done
+    fi
+    if (( warn ))
+    then
+      echo 'Warning: some required packages did not install, continuing'
+    fi
+
+    # run all postinstall scripts
+
+    pis=`ls /etc/postinstall/*.sh 2>/dev/null | wc -l`
+    if (( pis && ! noscripts ))
+    then
+      echo Running postinstall scripts
+      for script in /etc/postinstall/*.sh
+      do
+        $script
+        mv $script $script.done
+      done
+    fi
+    echo Package $pkg installed
+
+    done
+  ;;
+
+  remove)
+    checkpackages
+    for pkg in $packages
+    do
+
+    already=`grep -c "^$pkg " /etc/setup/installed.db`
+    if (( ! already ))
+    then
+      echo Package $pkg is not installed, skipping
+      continue
+    fi
+    for req in cygwin coreutils gawk bzip2 tar wget bash
+    do
+      if [[ $pkg = $req ]]
+      then
+        echo apt-cyg cannot remove package $pkg, exiting
+        exit 1
+      fi
+    done
+    if [ ! -e "/etc/setup/$pkg.lst.gz" ]
+    then
+      echo Package manifest missing, cannot remove $pkg. Exiting
+      exit 1
+    fi
+    echo Removing $pkg
+
+    # run preremove scripts
+
+    if [ -e "/etc/preremove/$pkg.sh" ]
+    then
+      "/etc/preremove/$pkg.sh"
+      rm "/etc/preremove/$pkg.sh"
+    fi
+    gzip -cd "/etc/setup/$pkg.lst.gz" |
+      awk '/[^\/]$/ {print "rm -f \"/" $0 "\""}' | sh
+    rm "/etc/setup/$pkg.lst.gz"
+    rm -f /etc/postinstall/$pkg.sh.done
+    awk '$1 != pkg' pkg="$pkg" /etc/setup/installed.db > /tmp/awk.$$
+    mv /etc/setup/installed.db /etc/setup/installed.db-save
+    mv /tmp/awk.$$ /etc/setup/installed.db
+    echo Package $pkg removed
+
+    done
+  ;;
+
+  *)
+    usage
+  ;;
+
+esac
