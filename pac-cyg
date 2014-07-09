@@ -376,7 +376,8 @@ case "$command" in
     getsetup
   ;;
 
-  show)
+    show)
+        # show installed packages
     echo The following packages are installed: >&2
     awk 'NR>1 && $0=$1' /etc/setup/installed.db
   ;;
