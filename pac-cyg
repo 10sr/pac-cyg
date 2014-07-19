@@ -336,7 +336,8 @@ do_query(){
     then
         for pkg in "$@"
         do
-            awk 'NR>1 && $1~query && $0=$1' query="$pkg" $_installed_db
+            awk 'NR>1 && $1~query && $0=$2' query="$pkg" $_installed_db | \
+                sed -e 's/\.tar\..*//'
         done
     fi
 
