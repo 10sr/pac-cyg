@@ -7,7 +7,7 @@ Pathes used by apt-cyg
 
     /etc/setup
     |
-    |- $pkg.lst.gz
+    |- $pkgname.lst.gz
     |
     `- installed.db
 
@@ -68,12 +68,14 @@ Pathes by pac-cyg
     |
     `- $mirror_url/
        |
-       |- release/
-       |  |
-       |  `- $pkgname/
-       |     |
-       |     |- $pkgname-$pkgvar.tar.bz2
-       |     |
-       |     `- desc
-       |
-       `- setup.ini
+       `- $arch
+          |
+          |- release/
+          |  |
+          |  `- $pkgname/
+          |     |
+          |     |- $pkgname-$pkgvar.tar.bz2
+          |     |
+          |     `- desc
+          |
+          `- setup.ini
