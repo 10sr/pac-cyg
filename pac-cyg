@@ -64,6 +64,7 @@ _ask(){
 }
 
 _detect_arch(){
+    # FIXME: die for unknown architecture
     [ $HOSTTYPE = x86_64 ] && echo x86_64 || echo x86
 }
 
@@ -485,7 +486,13 @@ __EOC__
 
 function do_version()
 {
-    echo pac-cyg v$_version
+    cat <<__EOC__
+pac-cyg v$_version
+Copyright (C) 2014 10sr
+
+This program may be freely redistributed under
+the terms of the GNU General Public License.
+__EOC__
 }
 
 
@@ -493,6 +500,12 @@ function do_version()
 # main
 
 main(){
+    # (currently) useless check: _detect_arch() always returns something
+    if test -z "$_arch"
+    then
+        _die "Cannot detect architecture for this environment."
+    fi
+
     _check_prepare_mirrorlist
 
     __ope=
