@@ -343,7 +343,12 @@ do_query(){
 
     if test -n "$__info"
     then
-        echo Qi
+        # NOTE: only shows package name and version
+        for pkg in "$@"
+        do
+            awk 'NR>1 && $1 == query && $0=$2' query="$pkg" $_installed_db | \
+                sed -e 's/\.tar\..*//'
+        done
     fi
 
     if test -n "$__own"
