@@ -163,6 +163,19 @@ do_sync(){
         done
     fi
 
+    if test -n "$__info"
+    then
+        # FIXME: this shows all packages that contain the queried strings
+        _cat_mirrorlist | while read repname url
+        do
+            for pkg in "$@"
+            do
+                awk '$1 ~ query {print $0 "\n"}' RS='\n\n@ ' FS='\n' query="$pkg" \
+                    `_get_cache_dir $url`/setup.ini
+            done
+        done
+    fi
+
 }
 
 _update_pkglist()
@@ -192,7 +205,7 @@ _installed_db_path=$_setupdir/installed.db
 _is_installed(){
     # _is_installed pkg
     # fail if pkg is not installed yet
-    grep "^$1" $_installed_db_path >/dev/null 2>&1
+    cut -d " " -f 1 $_installed_db_path | grep "^$1" >/dev/null 2>&1
 }
 
 _install(){
@@ -277,20 +290,26 @@ _install(){
 # query installed
 
 do_query(){
-    __opts=$1
-    shift
-    for __opt in `echo "$__opts" | sed -e 's/\(.\)/\1 /g'`
-    do
-        # iterate by one chars
-        case $__opt in
-            s) __search=1;;
-            i) __info=1;;
-            *) do_help; return 1;;
-        esac
-        echo opt: $__opt
-    done
+    if test "$1" == "-"
+    then
+        shift 1
+    else
+        unset OPTIND
+        while getopts siol opt2
+        do
+            case "$opt2" in
+                s) __search=1;;
+                i) __info=1;;
+                o) __own=1;;
+                l) __list=1;;
+                *) do_help; return 1;;
+            esac
+        done
 
-    if test -n "search"
+        shift `expr $OPTIND - 1`
+    fi
+
+    if test -n "$__search"
     then
         for pkg in "$@"
         do
@@ -298,7 +317,43 @@ do_query(){
         done
     fi
 
+    if test -n "$__info"
+    then
+        echo Qi
+    fi
 
+    if test -n "$__own"
+    then
+        for e in "$@"
+        do
+            key=$(command -v "$e" | sed s./..)
+            if (( ! ${#key} ))
+            then
+                key=$e
+            fi
+            for manifest in "$_setupdir"/*.lst.gz
+            do
+                found=$(gzip -cd $manifest | grep -c "$key" || true)
+                if (( found ))
+                then
+                    package=$(sed '
+          s,/etc/setup/,,
+          s,.lst.gz,,
+          ' <<< $manifest)
+                    echo Found $key in the package $package
+                    break
+                fi
+            done
+        done
+    fi
+
+    if test -n "$__list"
+    then
+        for pkg in "$@"
+        do
+            zcat "$_setupdir"/"$pkg".lst.gz || _warn Package not found: "$pkg"
+        done
+    fi
 }
 
 
@@ -326,7 +381,7 @@ do_remove(){
 function do_help()
 {
     cat <<__EOC__
-usage: pac-cyg <operation> [<option> ...] [<target> ...]
+Usage: pac-cyg <operation> [<option> ...] [<target> ...]
 
 Operations:
     -S
@@ -356,14 +411,14 @@ main(){
     __opts=
 
     unset OPTIND
-    while getopts SQRVsyuih opt
+    while getopts SQRVsyuiolh opt
     do
         case "$opt" in
             S) __ope=sync;;
             Q) __ope=query;;
             R) __ope=remove;;
             V) __ope=version;;
-            s|y|u|i) __opts=$__opts$opt;;
+            s|y|u|i|o|l) __opts=$__opts$opt;;
             h) do_help; return 0;;
             *) do_help; return 1;;
         esac
