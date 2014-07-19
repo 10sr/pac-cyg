@@ -31,6 +31,8 @@ _arch=
 _mirrorlist_default="# <name> <url>
 main http://mirrors.kernel.org/sourceware/cygwin"
 
+_installed_db=$_setupdir/installed.db
+
 ##########################33
 # Utilities
 
@@ -45,6 +47,20 @@ _warn(){
 _die(){
     _warn "$@"
     exit 1
+}
+
+_ask(){
+    # _ask msg default
+    # _ask use input with prompt MSG
+    # DEFAULT must be y or n
+    printf "$1 "
+    read reply
+    test -n "$reply" || reply="$2"
+    case $reply in
+        y|Y|yes|YES) return 0;;
+        n|N|no|NO) return 1;;
+        *) return 2;;
+    esac
 }
 
 _detect_arch(){
@@ -89,12 +105,18 @@ _cat_mirrorlist(){
     grep -v '^#' $_mirrorlist_path
 }
 
+_is_installed(){
+    # _is_installed pkgname
+    # fail if pkgname is not installed yet
+    cut -d " " -f 1 $_installed_db | grep --line-regexp "$1" >/dev/null 2>&1
+}
+
 
 ##############################
 # sync operations: install packages, search packages including uninstalled
 
 do_sync(){
-    if test "$1" == "-"
+    if test "$1" = "-"
     then
         shift 1
     else
@@ -200,14 +222,6 @@ _update_pkglist()
     fi
 }
 
-_installed_db_path=$_setupdir/installed.db
-
-_is_installed(){
-    # _is_installed pkg
-    # fail if pkg is not installed yet
-    cut -d " " -f 1 $_installed_db_path | grep "^$1" >/dev/null 2>&1
-}
-
 _install(){
     # _install pkg mirror
     # this function does not check if pkg is already installed
@@ -277,9 +291,9 @@ _install(){
     END {
       if (ins != 1) printf "%s %s 0\n", pkg, bz
     }
-    ' pkg="$pkg" bz=$file $_installed_db_path > /tmp/awk.$$
-        mv $_installed_db_path{,.bak}
-        mv /tmp/awk.$$ $_installed_db_path
+    ' pkg="$pkg" bz=$file $_installed_db > /tmp/awk.$$
+        mv $_installed_db{,.bak}
+        mv /tmp/awk.$$ $_installed_db
     done
 }
 
@@ -287,10 +301,10 @@ _install(){
 
 
 ##############################
-# query installed
+# query installed packages
 
 do_query(){
-    if test "$1" == "-"
+    if test "$1" = "-"
     then
         shift 1
     else
@@ -309,11 +323,17 @@ do_query(){
         shift `expr $OPTIND - 1`
     fi
 
+    if test -z "$__search" -a -z "$__info" -a -z "$__own" -a -z "$__list"
+    then
+        awk 'NR>1 && $0=$1' $_installed_db
+        return 0
+    fi
+
     if test -n "$__search"
     then
         for pkg in "$@"
         do
-            awk 'NR>1 && $1~query && $0=$1' query="$pkg" $_installed_db_path
+            awk 'NR>1 && $1~query && $0=$1' query="$pkg" $_installed_db
         done
     fi
 
@@ -351,7 +371,8 @@ do_query(){
     then
         for pkg in "$@"
         do
-            zcat "$_setupdir"/"$pkg".lst.gz || _warn Package not found: "$pkg"
+            zcat "$_setupdir"/"$pkg".lst.gz 2>/dev/null \
+                || _warn Package not found: "$pkg"
         done
     fi
 }
@@ -361,18 +382,83 @@ do_query(){
 # remove packages
 
 do_remove(){
-    __opts=$1
-    shift
-    for __opt in `echo "$__opts" | sed -e 's/\(.\)/\1 /g'`
-    do
-        # iterate by one chars
-        case $__opt in
-            s) __recursive=1;;
-            *) do_help; return 1;;
-        esac
-        echo opt: $__opt
-    done
+    if test "$1" = "-"
+    then
+        shift 1
+    else
+        unset OPTIND
+        while getopts s opt2
+        do
+            case "$opt2" in
+                s) __recursive=1;;
+                *) do_help; return 1;;
+            esac
+        done
 
+        shift `expr $OPTIND - 1`
+    fi
+
+    if test -n "$__recursive"
+    then
+        _warn Recursive remove is not currently supported.
+        _warn "-s" option is ignored.
+    fi
+
+    _msg Removing these packages:
+    echo
+    echo " " "$@"
+    echo
+    if _ask "Really remove these packages? [y/N]" n
+    then
+        for pkg in "$@"
+        do
+            _remove_package "$pkg"
+        done
+    else
+        _warn Abort.
+    fi
+}
+
+_remove_package(){
+    # _remove_package pkg
+    # remove one package
+    pkg=$1
+    if ! _is_installed "$pkg"
+    then
+        _warn Package $pkg is not installed, skipping
+        return 0
+    fi
+    for req in cygwin coreutils gawk bzip2 tar wget bash
+    do
+        if [[ $pkg = $req ]]
+        then
+            _warn apt-cyg cannot remove package $pkg, skipping
+            return 0
+        fi
+    done
+    if [ ! -e "$_setupdir/$pkg.lst.gz" ]
+    then
+        _warn Package manifest missing, cannot remove $pkg. skipping
+        return 0
+    fi
+
+    _msg Removing $pkg
+
+    # run preremove scripts
+
+    if [ -e "/etc/preremove/$pkg.sh" ]
+    then
+        "/etc/preremove/$pkg.sh"
+        rm "/etc/preremove/$pkg.sh"
+    fi
+    gzip -cd "$_setupdir/$pkg.lst.gz" |
+    awk '/[^\/]$/ {print "rm -f \"/" $0 "\""}' | sh
+    rm "$_setupdir/$pkg.lst.gz"
+    rm -f /etc/postinstall/$pkg.sh.done
+    awk '$1 != pkg' pkg="$pkg" $_installed_db > /tmp/awk.$$
+    mv ${_installed_db}{,-save}
+    mv /tmp/awk.$$ $_installed_db
+    _msg Package $pkg removed
 }
 
 ############################
@@ -384,9 +470,9 @@ function do_help()
 Usage: pac-cyg <operation> [<option> ...] [<target> ...]
 
 Operations:
-    -S
-    -Q
-    -R
+    -S    Sync packages
+    -Q    Query installed packages
+    -R    Remove packages
     -V    Show version
 __EOC__
 }
