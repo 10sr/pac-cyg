@@ -37,11 +37,11 @@ _installed_db=$_setupdir/installed.db
 # Utilities
 
 _msg(){
-    echo ":: $*"
+    echo ">> $*"
 }
 
 _warn(){
-    echo ":: $*" 1>&2
+    echo ">>> $*" 1>&2
 }
 
 _die(){
@@ -112,6 +112,7 @@ _is_installed(){
 }
 
 
+# TODO: check pacman and add more options if possible
 ##############################
 # sync operations: install packages, search packages including uninstalled
 
@@ -135,20 +136,13 @@ do_sync(){
         shift `expr $OPTIND - 1`
     fi
 
-    # __opts=$1
-    # shift
-    # for __opt in `echo "$__opts" | sed -e 's/\(.\)/\1 /g'`
-    # do
-    #     # iterate by one chars
-    #     case $__opt in
-    #         s) __search=1;;
-    #         y) __update=1;;
-    #         u) __upgrade=1;;
-    #         i) __info=1;;
-    #         *) do_help; return 1;;
-    #     esac
-    #     echo opt: $__opt
-    # done
+    # TODO: always use only the first mirror that found the packages
+
+    if test -z "$__search" -a -z "$__update" -a -z "$__upgrade" -a -z "$__info"
+    then
+        echo install
+        return 0
+    fi
 
     if test -n "$__update"
     then
@@ -174,25 +168,16 @@ do_sync(){
                     `_get_cache_dir $url`/setup.ini
             done
         done
-    else
-        _cat_mirrorlist | while read repname url
-        do
-            for pkg in "$@"
-            do
-                awk '$1 ~ query && $0 = $1' RS='\n\n@ ' FS='\n' query="$pkg" \
-                    `_get_cache_dir $url`/setup.ini
-            done
-        done
     fi
 
     if test -n "$__info"
     then
-        # FIXME: this shows all packages that contain the queried strings
         _cat_mirrorlist | while read repname url
         do
+            _msg "repository [$repname]"
             for pkg in "$@"
             do
-                awk '$1 ~ query {print $0 "\n"}' RS='\n\n@ ' FS='\n' query="$pkg" \
+                awk '$1 == query {print $0}' RS='\n\n@ ' FS='\n' query="$pkg" \
                     `_get_cache_dir $url`/setup.ini
             done
         done
@@ -220,6 +205,22 @@ _update_pkglist()
     else
         _die Error updating package list
     fi
+}
+
+_run_postinstall_sh(){
+    # run all postinstall scripts
+
+    pis=`ls /etc/postinstall/*.sh 2>/dev/null | wc -l`
+    if (( pis ))
+    then
+        echo Running postinstall scripts
+        for script in /etc/postinstall/*.sh
+        do
+            sh $script
+            mv $script $script.done
+        done
+    fi
+
 }
 
 _install(){
@@ -325,6 +326,7 @@ do_query(){
 
     if test -z "$__search" -a -z "$__info" -a -z "$__own" -a -z "$__list"
     then
+        # list all instaled packages
         awk 'NR>1 && $0=$1' $_installed_db
         return 0
     fi
