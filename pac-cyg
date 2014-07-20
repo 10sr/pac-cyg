@@ -22,7 +22,7 @@ set -eu
 
 
 _mirrorlist_path=/etc/pac-cyg.mirrorlist
-_version=0.1
+_version=0.1.1
 _cachedir=/var/cache/pac-cyg
 _setupdir=/etc/setup
 _arch=
@@ -196,11 +196,17 @@ do_sync(){
         _cat_mirrorlist | while read repname url
         do
             _msg "repository [$repname]"
-            for pkg in "$@"
-            do
-                awk '$1 ~ query && $0 = $1' RS='\n\n@ ' FS='\n' query="$pkg" \
+            if test $# -eq 0
+            then
+                awk '$0 = $1' RS='\n\n@ ' FS='\n' \
                     `_get_cache_dir $url`/setup.ini
-            done
+            else
+                for pkg in "$@"
+                do
+                    awk '$1 ~ query && $0 = $1' RS='\n\n@ ' FS='\n' query="$pkg" \
+                        `_get_cache_dir $url`/setup.ini
+                done
+            fi
         done
     fi
 
