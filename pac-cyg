@@ -1,5 +1,5 @@
 #!/bin/sh
-set -e
+set -eu
 #
 # pac-cyg --- Install tool for cygwin similar to archlinux pacman
 #
@@ -118,6 +118,10 @@ _is_installed(){
 # sync operations: install packages, search packages including uninstalled
 
 do_sync(){
+    __search=
+    __update=
+    __upgrade=
+    __info=
     if test "$1" = "-"
     then
         shift 1
@@ -228,12 +232,13 @@ _install(){
     # _install pkg mirror
     # this function does not check if pkg is already installed
     # use _is_installed to check it
-    __dir=$_vardir
+    mirror=$2
+    __dir="`_get_cache_dir $mirror`"
     __pkgdir=$__dir/release/$pkg
+
+    # look for package and save desc file
     mkdir -p $__pkgdir
-    _cat_mirrorlist | while read repname mirror
-    do
-        awk '
+    awk '
             $1 == package {
                 desc = $0
                 px++
@@ -244,47 +249,46 @@ _install(){
             }
         ' RS='\n\n@ ' FS='\n' package="$pkg" `_get_cache_dir $mirror`/setup.ini \
             > "$__pkgdir/desc"
-        if test "`cat $__pkgdir/desc`" = 'Package not found'
-        then
-            _msg $pkg is not found in $mirror
-            rm -r $__pkgdir
-            continue
-        fi
+    if test "`cat $__pkgdir/desc`" = 'Package not found'
+    then
+        _msg $pkg is not found in $mirror
+        rm -r $__pkgdir
+        continue
+    fi
+
+    # download and unpack the bz2 or xz file
+
+    # pick the latest version, which comes first
+    __arch_path=$(awk '/^install: / {print $2; exit}' "$__pkgdir/desc")
+
+    if test -z "$__arch_path"
+    then
+        _msg Cannot find archive file for $pkg in $mirror
+        continue
+    fi
+
+    __md5sum=$(awk '/^install: / {print $4; exit}' $__pkgdir/desc)
+    __filebase=`basename $__arch_path`
+    __file=`_get_cache_dir $mirror`/$__filebase
+
+    if test -e $__file -a $(md5sum $__file | awk NF=1) = $__md5sum
+    then
+        _msg $__filebase already downloaded. skip
+    elif _download $mirror/$__arch_path $__file && \
+        test $(md5sum $__file | awk NF=1) = $__md5sum
+    then
+        true
+    else
+        _msg downloading $__filebase failed
+        return 1
+    fi
+
+    echo "Unpacking $filebase ..."
+    tar xvf $file -C / > "$__pkgdir/file.lst"
 
 
-        # download and unpack the bz2 or xz file
-
-        # pick the latest version, which comes first
-        __arch_path=$(awk '/^install: / {print $2; exit}' "$__pkgdir/desc")
-
-        if test -z "$__arch_path"
-        then
-            _msg Cannot find archive file for $pkg in $mirror
-            continue
-        fi
-
-        __md5sum=$(awk '/^install: / {print $4; exit}' $__pkgdir/desc)
-        __filebase=`basename $__arch_path`
-        __file=`_get_cache_dir $mirror`/$__filebase
-
-        if test -e $__file -a $(md5sum $__file | awk NF=1) = $__md5sum
-        then
-            _msg $__filebase already downloaded. skip
-        elif _download $mirror/$__arch_path $__file && \
-            test $(md5sum $__file | awk NF=1) = $__md5sum
-        then
-            true
-        else
-            _msg downloading $__filebase failed
-            return 1
-        fi
-
-        echo "Unpacking $filebase ..."
-        tar xvf $file -C / > "$__pkgdir/file.lst"
-
-
-        # update the package database
-        awk '
+    # update the package database
+    awk '
     ins != 1 && pkg < $1 {
       printf "%s %s 0\n", pkg, bz
       ins=1
@@ -294,9 +298,8 @@ _install(){
       if (ins != 1) printf "%s %s 0\n", pkg, bz
     }
     ' pkg="$pkg" bz=$file $_installed_db > /tmp/awk.$$
-        mv $_installed_db{,.bak}
-        mv /tmp/awk.$$ $_installed_db
-    done
+    mv $_installed_db{,.bak}
+    mv /tmp/awk.$$ $_installed_db
 }
 
 
@@ -306,6 +309,10 @@ _install(){
 # query installed packages
 
 do_query(){
+    __search=
+    __info=
+    __own=
+    __list=
     if test "$1" = "-"
     then
         shift 1
@@ -391,6 +398,7 @@ do_query(){
 # remove packages
 
 do_remove(){
+    __recursive=
     if test "$1" = "-"
     then
         shift 1
