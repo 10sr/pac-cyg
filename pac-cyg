@@ -36,12 +36,16 @@ _installed_db=$_setupdir/installed.db
 ##########################33
 # Utilities
 
+__tput_bold=`tput bold || true`
+__tput_default=`tput sgr0 || true`
+__tput_yellow=`tput setaf 3 || true`
+
 _msg(){
-    echo ">> `tput bold`$*`tput sgr0`"
+    echo ">> ${__tput_bold}$*${__tput_default}"
 }
 
 _warn(){
-    echo ">>> `tput bold``tput setaf 3`$*`tput sgr0`" 1>&2
+    echo ">>> ${__tput_yellow}${__tput_bold}$*${__tput_default}" 1>&2
 }
 
 _die(){
