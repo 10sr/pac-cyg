@@ -2,7 +2,7 @@ pac-cyg
 =======
 
 A command-line installer for Cygwin which cooperates with Cygwin Setup and uses
-the same repository. The syntax is similar to `pacman` from Arch Linux.
+the same repository. The syntax is similar to `pacman` of Arch Linux.
 
 
 Basic Usage
