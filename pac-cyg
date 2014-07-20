@@ -391,6 +391,7 @@ _install_recursively_with_mirror(){
                 continue
             fi
             if _make_desc_or_fail $require $mirror
+            then
                 _install_recursively_with_mirror $require $mirror
                 (( $? && warn++ ))
             else
