@@ -314,6 +314,7 @@ _install_recursively_with_mirror(){
     __dir="`_get_cache_dir $mirror`"
     __pkgdir=$__dir/release/$pkg
 
+    _msg Start installing $pkg
 
     # download and unpack the bz2 or xz file
 
@@ -393,12 +394,12 @@ _install_recursively_with_mirror(){
             if _make_desc_or_fail $require $mirror
             then
                 _install_recursively_with_mirror $require $mirror
-                (( $? && warn++ ))
+                (( $? && warn++ )) || true
             else
                 _warn $require not found in $mirror
                 _warn $check another mirrors
                 _install_package $require
-                (( $? && warn++ ))
+                (( $? && warn++ )) || true
             fi
         done
     fi
