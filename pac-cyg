@@ -161,8 +161,6 @@ do_sync(){
         shift `expr $OPTIND - 1`
     fi
 
-    # TODO: always use only the first mirror that found the packages
-
     if test -z "$__search" -a -z "$__update" -a -z "$__upgrade" -a -z "$__info"
     then
         for pkg in "$@"
