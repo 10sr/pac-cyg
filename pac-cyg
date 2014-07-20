@@ -37,11 +37,11 @@ _installed_db=$_setupdir/installed.db
 # Utilities
 
 _msg(){
-    echo ">> $*"
+    echo ">> `tput bold`$*`tput sgr0`"
 }
 
 _warn(){
-    echo ">>> $*" 1>&2
+    echo ">>> `tput bold``tput setaf 3`$*`tput sgr0`" 1>&2
 }
 
 _die(){
