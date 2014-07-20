@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -eu
 #
 # pac-cyg --- Install tool for cygwin similar to archlinux pacman
@@ -112,8 +112,9 @@ _is_installed(){
     cut -d " " -f 1 $_installed_db | grep --line-regexp "$1" >/dev/null 2>&1
 }
 
+# FIXME: make the variable naming consistent: proceeding __ for local variables
 
-# TODO: check pacman and add more options if possible
+
 ##############################
 # sync operations: install packages, search packages including uninstalled
 
@@ -145,7 +146,15 @@ do_sync(){
 
     if test -z "$__search" -a -z "$__update" -a -z "$__upgrade" -a -z "$__info"
     then
-        echo install
+        for pkg in "$@"
+        do
+            if _is_installed "$pkg"
+            then
+                _msg Package $pkg is already installed, skipping
+            else
+                _install_package "$pkg"
+            fi
+        done
         return 0
     fi
 
@@ -212,13 +221,32 @@ _update_pkglist()
     fi
 }
 
-_run_postinstall_sh(){
+_install_package(){
+    # query one package for install
+    # check all available mirrors and install required packages
+    # install all dependant packages from same mirrors
+    pkg=$1
+    _cat_mirrorlist | while read repname url
+    do
+        if _make_desc_or_fail $pkg $url
+        then
+            _msg $pkg is found in $mirror
+            _install_recursively_with_mirror $pkg $url
+            break
+        else
+            _warn $pkg is not found in $mirror
+        fi
+    done
+    _run_postinstall_scripts
+}
+
+_run_postinstall_scripts(){
     # run all postinstall scripts
 
     pis=`ls /etc/postinstall/*.sh 2>/dev/null | wc -l`
     if (( pis ))
     then
-        echo Running postinstall scripts
+        _msg Running postinstall scripts
         for script in /etc/postinstall/*.sh
         do
             sh $script
@@ -228,10 +256,11 @@ _run_postinstall_sh(){
 
 }
 
-_install(){
-    # _install pkg mirror
-    # this function does not check if pkg is already installed
-    # use _is_installed to check it
+_make_desc_or_fail(){
+    # _make_desc_or_fail pkgname mirror
+    # If PKGNAME is found in MIRROR, make desc file for that.
+    # Otherwise, return 1
+    pkg=$1
     mirror=$2
     __dir="`_get_cache_dir $mirror`"
     __pkgdir=$__dir/release/$pkg
@@ -251,43 +280,59 @@ _install(){
             > "$__pkgdir/desc"
     if test "`cat $__pkgdir/desc`" = 'Package not found'
     then
-        _msg $pkg is not found in $mirror
         rm -r $__pkgdir
-        continue
+        return 1
     fi
+}
+
+_install_recursively_with_mirror(){
+    # _install_recursively_with_mirror pkg mirror
+    # desc file is already prepared
+    pkg=$1
+    mirror=$2
+    __dir="`_get_cache_dir $mirror`"
+    __pkgdir=$__dir/release/$pkg
+
 
     # download and unpack the bz2 or xz file
 
     # pick the latest version, which comes first
-    __arch_path=$(awk '/^install: / {print $2; exit}' "$__pkgdir/desc")
+    __arch_relative_path=$(awk '/^install: / {print $2; exit}' "$__pkgdir/desc")
 
-    if test -z "$__arch_path"
+    if test -z "$__arch_relative_path"
     then
         _msg Cannot find archive file for $pkg in $mirror
-        continue
+        return 0
     fi
+    __arch_url="$mirror/$__arch_relative_path"
+    # __arch_output="$__dir/../$__arch_relative_path"
 
+    __arch_basename=`basename $__arch_relative_path`
+    __arch_output="$__pkgdir/$__arch_basename"
     __md5sum=$(awk '/^install: / {print $4; exit}' $__pkgdir/desc)
-    __filebase=`basename $__arch_path`
-    __file=`_get_cache_dir $mirror`/$__filebase
 
-    if test -e $__file -a $(md5sum $__file | awk NF=1) = $__md5sum
+    if test -e "$__arch_output" && \
+        test $(md5sum $__arch_output | awk NF=1) = $__md5sum
     then
-        _msg $__filebase already downloaded. skip
-    elif _download $mirror/$__arch_path $__file && \
-        test $(md5sum $__file | awk NF=1) = $__md5sum
+        _msg $__arch_basename already downloaded. skip
+
+    elif _download $__arch_url $__arch_output && \
+        test $(md5sum $__arch_output | awk NF=1) = $__md5sum
     then
+        # file donwloaded without any error
         true
+
     else
         _msg downloading $__filebase failed
         return 1
     fi
 
-    echo "Unpacking $filebase ..."
-    tar xvf $file -C / > "$__pkgdir/file.lst"
+
+    _msg "Unpacking $__arch_output ..."
+    tar xvf $__arch_output -C / | gzip > "$_setupdir/$pkg".lst.gz
 
 
-    # update the package database
+    # update installed.db
     awk '
     ins != 1 && pkg < $1 {
       printf "%s %s 0\n", pkg, bz
@@ -297,9 +342,40 @@ _install(){
     END {
       if (ins != 1) printf "%s %s 0\n", pkg, bz
     }
-    ' pkg="$pkg" bz=$file $_installed_db > /tmp/awk.$$
+    ' pkg="$pkg" bz=$__arch_output $_installed_db > /tmp/awk.$$
     mv $_installed_db{,.bak}
     mv /tmp/awk.$$ $_installed_db
+
+    _msg Package $pkg installed
+
+    # recursively install required packages
+
+    requires=$(awk '
+    $0 ~ rq {
+      sub(rq, "")
+      print
+    }
+    ' rq='^requires: ' "$__pkgdir/desc")
+    warn=0
+    if (( ${#requires} ))
+    then
+        _msg Package $pkg requires the following packages, installing:
+        echo " " $requires
+        for require in $requires
+        do
+            if _is_installed $require
+            then
+                _msg Package $require is already installed, skipping
+                continue
+            fi
+            _install_recursively_with_mirror $require $mirror
+            (( $? && warn++ ))
+        done
+    fi
+    if (( warn ))
+    then
+        _warn 'Warning: some required packages did not install, continuing'
+    fi
 }
 
 
@@ -445,7 +521,7 @@ _remove_package(){
         _warn Package $pkg is not installed, skipping
         return 0
     fi
-    for req in cygwin coreutils gawk bzip2 tar wget bash
+    for req in cygwin coreutils gawk bzip2 tar bash
     do
         if [[ $pkg = $req ]]
         then
