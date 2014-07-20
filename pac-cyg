@@ -499,7 +499,7 @@ do_query(){
           s,/etc/setup/,,
           s,.lst.gz,,
           ' <<< $manifest)
-                    echo Found $key in the package $package
+                    _msg Found $key in the package $package
                     break
                 fi
             done
