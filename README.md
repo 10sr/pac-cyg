@@ -27,7 +27,7 @@ Synopsis
     use 'pac-cyg -h' with an operation for available options
 
 
-### -S ###
+### -S (Sync) ###
 
 Synchronize packages (installing, searching remote repositories, ...).
 Available options are:
@@ -40,7 +40,7 @@ Available options are:
 No option to install packages.
 
 
-### -Q ###
+### -Q (Query) ###
 
 Query to view installed packages. Available options are:
 
@@ -51,7 +51,7 @@ Query to view installed packages. Available options are:
     -h           Print this help
 
 
-### -R ###
+### -R (Remove) ###
 
 Remove installed packages.
 
