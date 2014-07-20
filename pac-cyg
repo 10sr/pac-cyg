@@ -382,6 +382,7 @@ _install_recursively_with_mirror(){
     then
         _msg Package $pkg requires the following packages, installing:
         echo " " $requires
+
         for require in $requires
         do
             if _is_installed $require
@@ -389,8 +390,15 @@ _install_recursively_with_mirror(){
                 _msg Package $require is already installed, skipping
                 continue
             fi
-            _install_recursively_with_mirror $require $mirror
-            (( $? && warn++ ))
+            if _make_desc_or_fail $require $mirror
+                _install_recursively_with_mirror $require $mirror
+                (( $? && warn++ ))
+            else
+                _warn $require not found in $mirror
+                _warn $check another mirrors
+                _install_package $require
+                (( $? && warn++ ))
+            fi
         done
     fi
     if (( warn ))
