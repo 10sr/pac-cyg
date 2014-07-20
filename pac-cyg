@@ -80,6 +80,9 @@ _download(){
     elif  type curl >/dev/null 2>&1
     then
         curl --url "$1" --output "$2"
+    else
+        _warn No program for download found.
+        _die Install wget or curl from setup.exe first.
     fi
 }
 
