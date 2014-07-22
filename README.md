@@ -13,7 +13,7 @@ Type `pac-cyg -Qs` to search installed packages, and `pac-cyg -R tmux`
 to remove.
 
 
-Synopsis
+Options
 --------
 
     pac-cyg <operation> [<option> ...] [<target> ...]
