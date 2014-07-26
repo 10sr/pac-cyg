@@ -254,7 +254,7 @@ _update_pkglist()
 _install_package(){
     # query one package for install
     # check all available mirrors and install required packages
-    # install all dependant packages from same mirrors
+    # basically install all dependant packages from same mirrors
     pkg=$1
     _cat_mirrorlist | while read repname url
     do
@@ -262,12 +262,16 @@ _install_package(){
         then
             _msg $pkg is found in $mirror
             _install_recursively_with_mirror $pkg $url
-            break
+            _run_postinstall_scripts
         else
             _warn $pkg is not found in $mirror
         fi
     done
-    _run_postinstall_scripts
+    if ! _is_installed $pkg
+    then
+        _warn $pkg not installed.
+        return 1
+    fi
 }
 
 _run_postinstall_scripts(){
@@ -406,7 +410,7 @@ _install_recursively_with_mirror(){
                 (( $? && warn++ )) || true
             else
                 _warn $require not found in $mirror
-                _warn $check another mirrors
+                _warn check another mirrors
                 _install_package $require
                 (( $? && warn++ )) || true
             fi
