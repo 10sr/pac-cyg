@@ -20,6 +20,7 @@ set -eu
 # (http://www.fsf.org/licensing/licenses/gpl.html)
 
 
+use_cowsay=0
 
 _mirrorlist_path=/etc/pac-cyg.mirrorlist
 _version=0.1.1
@@ -33,6 +34,13 @@ main http://mirrors.kernel.org/sourceware/cygwin"
 
 _installed_db=$_setupdir/installed.db
 
+enable_cowsay=0
+if command -v cowsay >/dev/null \
+    && test -n "$use_cowsay" && test "$use_cowsay" -gt 0
+then
+    enable_cowsay=1
+fi
+
 ##########################33
 # Utilities
 
@@ -41,11 +49,21 @@ __tput_default=`tput sgr0 || true`
 __tput_yellow=`tput setaf 3 || true`
 
 _msg(){
-    echo ">> ${__tput_bold}$*${__tput_default}"
+    if (( $enable_cowsay ))
+    then
+        cowsay "$*"
+    else
+        echo ">> ${__tput_bold}$*${__tput_default}"
+    fi
 }
 
 _warn(){
-    echo ">>> ${__tput_yellow}${__tput_bold}$*${__tput_default}" 1>&2
+    if (( $enable_cowsay )) >/dev/null
+    then
+        cowsay -d "$*" 1>&2
+    else
+        echo ">>> ${__tput_yellow}${__tput_bold}$*${__tput_default}" 1>&2
+    fi
 }
 
 _die(){
