@@ -67,9 +67,12 @@ _ask(){
     esac
 }
 
-_detect_arch(){
-    # FIXME: die for unknown architecture
-    [ $HOSTTYPE = x86_64 ] && echo x86_64 || echo x86
+_detect_arch_or_die(){
+    case "$HOSTTYPE" in
+        x86_64) echo x86_64;;
+        i686) echo x86;;
+        *) _die Unsupported architecture: $HOSTTYPE;;
+    esac
 }
 
 _download(){
@@ -662,12 +665,6 @@ __EOC__
 # main
 
 main(){
-    # (currently) useless check: _detect_arch() always returns something
-    if test -z "$_arch"
-    then
-        _die "Cannot detect architecture for this environment."
-    fi
-
     _check_prepare_mirrorlist
 
     __ope=
@@ -706,5 +703,5 @@ main(){
     esac
 }
 
-_arch=`_detect_arch`
+_arch=`_detect_arch_or_die`
 main "$@"
