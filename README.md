@@ -5,7 +5,7 @@ A command-line installer for Cygwin which cooperates with Cygwin Setup and uses
 the same repository. The syntax is similar to `pacman` of Arch Linux.
 
 
-Basic Usage
+Basic Usage Examples
 -----------
 
 To install packages, issue `pac-cyg -S tmux`.
@@ -24,7 +24,7 @@ Options
         -R    Remove packages
         -V    Show version
 
-    use 'pac-cyg -h' with an operation for available options
+Use 'pac-cyg -h' with an operation for available options
 
 
 ### -S (Sync) ###
@@ -45,7 +45,8 @@ No option to install packages.
 Query to view installed packages. Available options are:
 
     -s <query>   Search installed packages
-    -i <package> Show infos about installed packages (very simple)
+    -i <package> Show infos about installed packages (very simple, use -Si for
+                 details)
     -o <file>    Find package that has given files or commands
     -l <package> List files owned by packages
     -h           Print this help
