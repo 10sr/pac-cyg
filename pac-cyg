@@ -652,7 +652,7 @@ _remove_package(){
 ############################
 # help
 
-function do_help()
+do_help()
 {
     cat <<__EOC__
 usage: pac-cyg <operation> [<option> ...] [<target> ...]
@@ -671,7 +671,7 @@ __EOC__
 ########################
 # version
 
-function do_version()
+do_version()
 {
     cat <<__EOC__
 pac-cyg v$_version
