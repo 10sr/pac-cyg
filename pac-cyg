@@ -281,6 +281,7 @@ _install_package(){
             _msg $pkg is found in $mirror
             _install_recursively_with_mirror $pkg $url
             _run_postinstall_scripts
+            break
         else
             _warn $pkg is not found in $mirror
         fi
