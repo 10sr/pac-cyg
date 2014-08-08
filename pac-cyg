@@ -20,7 +20,7 @@ set -eu
 # (http://www.fsf.org/licensing/licenses/gpl.html)
 
 
-use_cowsay=0
+use_cowsay=1
 
 _mirrorlist_path=/etc/pac-cyg.mirrorlist
 _version=0.1.1
@@ -76,9 +76,9 @@ _ask(){
     # _ask use input with prompt MSG
     # DEFAULT must be y or n
     printf "$1 "
-    read reply
-    test -n "$reply" || reply="$2"
-    case $reply in
+    read __reply
+    test -n "$__reply" || __reply="$2"
+    case $__reply in
         y|Y|yes|YES) return 0;;
         n|N|no|NO) return 1;;
         *) return 2;;
@@ -187,13 +187,13 @@ do_sync(){
 
     if test -z "$__search" -a -z "$__update" -a -z "$__upgrade" -a -z "$__info"
     then
-        for pkg in "$@"
+        for __pkg in "$@"
         do
-            if _is_installed "$pkg"
+            if _is_installed "$__pkg"
             then
-                _msg Package $pkg is already installed, skipping
+                _msg Package $__pkg is already installed, skipping
             else
-                _install_package "$pkg"
+                _install_package "$__pkg"
             fi
         done
         return 0
@@ -201,31 +201,32 @@ do_sync(){
 
     if test -n "$__update"
     then
-        _cat_mirrorlist | while read repname url
+        _cat_mirrorlist | while read __repname __url
         do
-            _update_pkglist $url
+            _update_pkglist $__url
         done
     fi
 
     if test -n "$__upgrade"
     then
+        # TODO: implement update
         _warn Updating feature is not supported yet. Use setup.exe .
     fi
 
     if test -n "$__search"
     then
-        _cat_mirrorlist | while read repname url
+        _cat_mirrorlist | while read __repname __url
         do
-            _msg "repository [$repname]"
+            _msg "repository [$__repname]"
             if test $# -eq 0
             then
                 awk '$0 = $1' RS='\n\n@ ' FS='\n' \
-                    `_get_cache_dir $url`/setup.ini
+                    `_get_cache_dir $__url`/setup.ini
             else
-                for pkg in "$@"
+                for __pkg in "$@"
                 do
-                    awk '$1 ~ query && $0 = $1' RS='\n\n@ ' FS='\n' query="$pkg" \
-                        `_get_cache_dir $url`/setup.ini
+                    awk '$1 ~ query && $0 = $1' RS='\n\n@ ' FS='\n' query="$__pkg" \
+                        `_get_cache_dir $__url`/setup.ini
                 done
             fi
         done
@@ -233,13 +234,13 @@ do_sync(){
 
     if test -n "$__info"
     then
-        _cat_mirrorlist | while read repname url
+        _cat_mirrorlist | while read __repname __url
         do
-            _msg "repository [$repname]"
-            for pkg in "$@"
+            _msg "repository [$__repname]"
+            for __pkg in "$@"
             do
-                awk '$1 == query {print $0}' RS='\n\n@ ' FS='\n' query="$pkg" \
-                    `_get_cache_dir $url`/setup.ini
+                awk '$1 == query {print $0}' RS='\n\n@ ' FS='\n' query="$__pkg" \
+                    `_get_cache_dir $__url`/setup.ini
                 echo
             done
         done
@@ -270,25 +271,26 @@ _update_pkglist()
 }
 
 _install_package(){
+    # _install_package <pkg>
     # query one package for install
     # check all available mirrors and install required packages
     # basically install all dependant packages from same mirrors
-    pkg=$1
-    _cat_mirrorlist | while read repname url
+    __pkg=$1
+    _cat_mirrorlist | while read __repname __url
     do
-        if _make_desc_or_fail $pkg $url
+        if _make_desc_or_fail $__pkg $__url
         then
-            _msg $pkg is found in $mirror
-            _install_recursively_with_mirror $pkg $url
+            _msg $__pkg is found in $__repname
+            _install_recursively_with_mirror $__pkg $__url
             _run_postinstall_scripts
             break
         else
-            _warn $pkg is not found in $mirror
+            _warn $__pkg is not found in $__repname
         fi
     done
-    if ! _is_installed $pkg
+    if ! _is_installed $__pkg
     then
-        _warn $pkg not installed.
+        _warn $__pkg not installed.
         return 1
     fi
 }
@@ -296,27 +298,27 @@ _install_package(){
 _run_postinstall_scripts(){
     # run all postinstall scripts
 
-    pis=`ls /etc/postinstall/*.sh 2>/dev/null | wc -l`
-    if (( pis ))
+    if ls /etc/postinstall/*.sh >/dev/null 2>&1
     then
         _msg Running postinstall scripts
-        for script in /etc/postinstall/*.sh
+        for __script in /etc/postinstall/*.sh
         do
-            sh $script
-            mv $script $script.done
+            _msg Run poistinstall script: $__script
+            sh $__script
+            mv $__script $__script.done
         done
     fi
 
 }
 
 _make_desc_or_fail(){
-    # _make_desc_or_fail pkgname mirror
+    # _make_desc_or_fail <pkg> <mirror>
     # If PKGNAME is found in MIRROR, make desc file for that.
     # Otherwise, return 1
-    pkg=$1
-    mirror=$2
-    __dir="`_get_cache_dir $mirror`"
-    __pkgdir=$__dir/release/$pkg
+    __pkg=$1
+    __mirror=$2
+    __dir="`_get_cache_dir $__mirror`"
+    __pkgdir=$__dir/release/$__pkg
 
     # look for package and save desc file
     mkdir -p $__pkgdir
@@ -329,7 +331,7 @@ _make_desc_or_fail(){
                 if (px == 1 && desc) print desc
                 else print "Package not found"
             }
-        ' RS='\n\n@ ' FS='\n' package="$pkg" `_get_cache_dir $mirror`/setup.ini \
+        ' RS='\n\n@ ' FS='\n' package="$__pkg" `_get_cache_dir $__mirror`/setup.ini \
             > "$__pkgdir/desc"
     if test "`cat $__pkgdir/desc`" = 'Package not found'
     then
@@ -339,14 +341,14 @@ _make_desc_or_fail(){
 }
 
 _install_recursively_with_mirror(){
-    # _install_recursively_with_mirror pkg mirror
+    # _install_recursively_with_mirror <pkg> <mirror>
     # desc file is already prepared
-    pkg=$1
-    mirror=$2
-    __dir="`_get_cache_dir $mirror`"
-    __pkgdir=$__dir/release/$pkg
+    __pkg=$1
+    __mirror=$2
+    __dir="`_get_cache_dir $__mirror`"
+    __pkgdir=$__dir/release/$__pkg
 
-    _msg Start installing $pkg
+    _msg Start installing $__pkg
 
     # download and unpack the bz2 or xz file
 
@@ -355,10 +357,10 @@ _install_recursively_with_mirror(){
 
     if test -z "$__arch_relative_path"
     then
-        _msg Cannot find archive file for $pkg in $mirror
+        _msg Cannot find archive file for $__pkg in $__mirror
         return 0
     fi
-    __arch_url="$mirror/$__arch_relative_path"
+    __arch_url="$__mirror/$__arch_relative_path"
     # __arch_output="$__dir/../$__arch_relative_path"
 
     __arch_basename=`basename $__arch_relative_path`
@@ -383,7 +385,7 @@ _install_recursively_with_mirror(){
 
 
     _msg "Unpacking $__arch_output ..."
-    tar xvf $__arch_output -C / | gzip > "$_setupdir/$pkg".lst.gz
+    tar xvf $__arch_output -C / | gzip > "$_setupdir/$__pkg".lst.gz
 
 
     # update installed.db
@@ -396,46 +398,48 @@ _install_recursively_with_mirror(){
     END {
       if (ins != 1) printf "%s %s 0\n", pkg, bz
     }
-    ' pkg="$pkg" bz=$__arch_output $_installed_db > /tmp/awk.$$
+    ' pkg="$__pkg" bz=$__arch_output $_installed_db > /tmp/awk.$$
     mv $_installed_db{,.bak}
     mv /tmp/awk.$$ $_installed_db
 
-    _msg Package $pkg installed
+    _msg Package $__pkg installed
 
     # recursively install required packages
 
-    requires=$(awk '
+    # TODO: use transaction: install packages only when all required packages
+    # are successfully extracted
+    __requires=$(awk '
     $0 ~ rq {
       sub(rq, "")
       print
     }
     ' rq='^requires: ' "$__pkgdir/desc")
-    warn=0
-    if (( ${#requires} ))
+    __warn=0
+    if (( ${#__requires} ))
     then
-        _msg Package $pkg requires the following packages, installing:
-        echo " " $requires
+        _msg Package $__pkg requires the following packages, installing:
+        echo " " $__requires
 
-        for require in $requires
+        for __require in $__requires
         do
-            if _is_installed $require
+            if _is_installed $__require
             then
-                _msg Package $require is already installed, skipping
+                _msg Package $__require is already installed, skipping
                 continue
             fi
-            if _make_desc_or_fail $require $mirror
+            if _make_desc_or_fail $__require $__mirror
             then
-                _install_recursively_with_mirror $require $mirror
-                (( $? && warn++ )) || true
+                _install_recursively_with_mirror $__require $__mirror
+                (( $? && __warn++ )) || true
             else
-                _warn $require not found in $mirror
+                _warn $__require not found in $__mirror
                 _warn check another mirrors
-                _install_package $require
-                (( $? && warn++ )) || true
+                _install_package $__require
+                (( $? && __warn++ )) || true
             fi
         done
     fi
-    if (( warn ))
+    if (( __warn ))
     then
         _warn 'Warning: some required packages did not install, continuing'
     fi
@@ -497,9 +501,9 @@ do_query(){
 
     if test -n "$__search"
     then
-        for pkg in "$@"
+        for __pkg in "$@"
         do
-            awk 'NR>1 && $1~query && $0=$2' query="$pkg" $_installed_db | \
+            awk 'NR>1 && $1~query && $0=$2' query="$__pkg" $_installed_db | \
                 sed -e 's/\.tar\..*//'
         done
     fi
@@ -507,32 +511,32 @@ do_query(){
     if test -n "$__info"
     then
         # NOTE: only shows package name and version
-        for pkg in "$@"
+        for __pkg in "$@"
         do
-            awk 'NR>1 && $1 == query && $0=$2' query="$pkg" $_installed_db | \
+            awk 'NR>1 && $1 == query && $0=$2' query="$__pkg" $_installed_db | \
                 sed -e 's/\.tar\..*//'
         done
     fi
 
     if test -n "$__own"
     then
-        for e in "$@"
+        for __e in "$@"
         do
-            key=$(command -v "$e" | sed s./..)
-            if (( ! ${#key} ))
+            __key=$(command -v "$__e" | sed s./..)
+            if (( ! ${#__key} ))
             then
-                key=$e
+                __key=$__e
             fi
-            for manifest in "$_setupdir"/*.lst.gz
+            for __manifest in "$_setupdir"/*.lst.gz
             do
-                found=$(gzip -cd $manifest | grep -c "$key" || true)
-                if (( found ))
+                __found=$(gzip -cd $__manifest | grep -c "$__key" || true)
+                if (( __found ))
                 then
-                    package=$(sed '
+                    __package=$(sed '
           s,/etc/setup/,,
           s,.lst.gz,,
-          ' <<< $manifest)
-                    _msg Found $key in the package $package
+          ' <<< $__manifest)
+                    _msg Found $__key in the package $__package
                     break
                 fi
             done
@@ -541,10 +545,10 @@ do_query(){
 
     if test -n "$__list"
     then
-        for pkg in "$@"
+        for __pkg in "$@"
         do
-            zcat "$_setupdir"/"$pkg".lst.gz 2>/dev/null \
-                || _warn Package not found: "$pkg"
+            zcat "$_setupdir"/"$__pkg".lst.gz 2>/dev/null \
+                || _warn Package not found: "$__pkg"
         done
     fi
 }
@@ -599,9 +603,9 @@ do_remove(){
     echo
     if _ask "Really remove these packages? [y/N]" n
     then
-        for pkg in "$@"
+        for __pkg in "$@"
         do
-            _remove_package "$pkg"
+            _remove_package "$__pkg"
         done
     else
         _warn Abort.
@@ -609,45 +613,45 @@ do_remove(){
 }
 
 _remove_package(){
-    # _remove_package pkg
+    # _remove_package <pkg>
     # remove one package
-    pkg=$1
-    if ! _is_installed "$pkg"
+    __pkg=$1
+    if ! _is_installed "$__pkg"
     then
-        _warn Package $pkg is not installed, skipping
+        _warn Package $__pkg is not installed, skipping
         return 0
     fi
-    for req in cygwin coreutils gawk bzip2 tar bash
+    for __req in cygwin coreutils gawk bzip2 tar bash
     do
-        if [[ $pkg = $req ]]
+        if [[ $__pkg = $__req ]]
         then
-            _warn apt-cyg cannot remove package $pkg, skipping
+            _warn apt-cyg cannot remove package $__pkg, skipping
             return 0
         fi
     done
-    if [ ! -e "$_setupdir/$pkg.lst.gz" ]
+    if [ ! -e "$_setupdir/$__pkg.lst.gz" ]
     then
-        _warn Package manifest missing, cannot remove $pkg. skipping
+        _warn Package manifest missing, cannot remove $__pkg. skipping
         return 0
     fi
 
-    _msg Removing $pkg
+    _msg Removing $__pkg
 
     # run preremove scripts
 
-    if [ -e "/etc/preremove/$pkg.sh" ]
+    if [ -e "/etc/preremove/$__pkg.sh" ]
     then
-        "/etc/preremove/$pkg.sh"
-        rm "/etc/preremove/$pkg.sh"
+        "/etc/preremove/$__pkg.sh"
+        rm "/etc/preremove/$__pkg.sh"
     fi
-    gzip -cd "$_setupdir/$pkg.lst.gz" |
+    gzip -cd "$_setupdir/$__pkg.lst.gz" |
     awk '/[^\/]$/ {print "rm -f \"/" $0 "\""}' | sh
-    rm "$_setupdir/$pkg.lst.gz"
-    rm -f /etc/postinstall/$pkg.sh.done
-    awk '$1 != pkg' pkg="$pkg" $_installed_db > /tmp/awk.$$
+    rm "$_setupdir/$__pkg.lst.gz"
+    rm -f /etc/postinstall/$__pkg.sh.done
+    awk '$1 != pkg' pkg="$__pkg" $_installed_db > /tmp/awk.$$
     mv ${_installed_db}{,-save}
     mv /tmp/awk.$$ $_installed_db
-    _msg Package $pkg removed
+    _msg Package $__pkg removed
 }
 
 ############################
