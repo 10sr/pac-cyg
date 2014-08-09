@@ -20,13 +20,14 @@ set -eu
 # (http://www.fsf.org/licensing/licenses/gpl.html)
 
 
-use_cowsay=1
+use_cowsay=0
 
 _mirrorlist_path=/etc/pac-cyg.mirrorlist
 _version=0.1.1
 _cachedir=/var/cache/pac-cyg
 _setupdir=/etc/setup
 _arch=
+_tmpdir=
 
 # newline separated mirrorlist
 _mirrorlist_default="# <name> <url>
@@ -398,9 +399,9 @@ _install_recursively_with_mirror(){
     END {
       if (ins != 1) printf "%s %s 0\n", pkg, bz
     }
-    ' pkg="$__pkg" bz=$__arch_output $_installed_db > /tmp/awk.$$
+    ' pkg="$__pkg" bz=$__arch_output $_installed_db > $_tmpdir/installed.db.$$
     mv $_installed_db{,.bak}
-    mv /tmp/awk.$$ $_installed_db
+    mv $_tmpdir/installed.db.$$ $_installed_db
 
     _msg Package $__pkg installed
 
@@ -648,9 +649,9 @@ _remove_package(){
     awk '/[^\/]$/ {print "rm -f \"/" $0 "\""}' | sh
     rm "$_setupdir/$__pkg.lst.gz"
     rm -f /etc/postinstall/$__pkg.sh.done
-    awk '$1 != pkg' pkg="$__pkg" $_installed_db > /tmp/awk.$$
+    awk '$1 != pkg' pkg="$__pkg" $_installed_db > $_tmpdir/installed.db.$$
     mv ${_installed_db}{,-save}
-    mv /tmp/awk.$$ $_installed_db
+    mv $_tmpdir/installed.db.$$ $_installed_db
     _msg Package $__pkg removed
 }
 
@@ -690,6 +691,11 @@ __EOC__
 
 ######################################3
 # main
+
+_delete_tmpdir(){
+    # _msg "Cleaning tmpdir"
+    rm -rf "$_tmpdir"
+}
 
 main(){
     _check_prepare_mirrorlist
@@ -731,4 +737,7 @@ main(){
 }
 
 _arch=`_detect_arch_or_die`
+_tmpdir=`mktemp --directory --tmpdir pac-cyg.XXXXXX`
+trap '_delete_tmpdir; exit 1' 1 2 3 15
+trap '_delete_tmpdir' EXIT
 main "$@"
