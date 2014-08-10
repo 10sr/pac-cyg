@@ -23,7 +23,7 @@ set -eu
 use_cowsay=0
 
 _mirrorlist_path=/etc/pac-cyg.mirrorlist
-_version=0.1.1
+_version=0.1.2
 _cachedir=/var/cache/pac-cyg
 _setupdir=/etc/setup
 _arch=
@@ -399,7 +399,7 @@ _install_recursively_with_mirror(){
     END {
       if (ins != 1) printf "%s %s 0\n", pkg, bz
     }
-    ' pkg="$__pkg" bz=$__arch_output $_installed_db > $_tmpdir/installed.db.$$
+    ' pkg="$__pkg" bz=$__arch_basename $_installed_db >$_tmpdir/installed.db.$$
     mv $_installed_db{,.bak}
     mv $_tmpdir/installed.db.$$ $_installed_db
 
