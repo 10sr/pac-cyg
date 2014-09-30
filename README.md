@@ -47,7 +47,7 @@ Query to view installed packages. Available options are:
     -s <query>   Search installed packages
     -i <package> Show infos about installed packages (very simple, use -Si for
                  details)
-    -o <file>    Find package that has given files or commands
+    -o <file>    Find package who owns given files or commands
     -l <package> List files owned by packages
     -h           Print this help
 
