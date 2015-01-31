@@ -24,7 +24,7 @@ Options
         -R    Remove packages
         -V    Show version
 
-Use 'pac-cyg -h' with an operation for available options
+Use 'pac-cyg -h' with an operation for available options for that operation.
 
 
 ### -S (Sync) ###
