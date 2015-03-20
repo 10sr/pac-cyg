@@ -45,9 +45,17 @@ fi
 ##########################33
 # Utilities
 
-__tput_bold=`tput bold || true`
-__tput_default=`tput sgr0 || true`
-__tput_yellow=`tput setaf 3 || true`
+if command -v tput >/dev/null
+then
+    __tput_bold=`tput bold`
+    __tput_default=`tput sgr0`
+    __tput_yellow=`tput setaf 3`
+else
+    echo ">>> Executable tput is not available. Install ncurses to enable colorized output"
+    __tput_bold=
+    __tput_default=
+    __tput_yellow=
+fi
 
 _msg(){
     if (( $enable_cowsay ))
