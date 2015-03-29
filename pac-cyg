@@ -374,15 +374,15 @@ _install_recursively_with_mirror(){
 
     __arch_basename=`basename $__arch_relative_path`
     __arch_output="$__pkgdir/$__arch_basename"
-    __md5sum=$(awk '/^install: / {print $4; exit}' $__pkgdir/desc)
+    __sha512sum=$(awk '/^install: / {print $4; exit}' $__pkgdir/desc)
 
     if test -e "$__arch_output" && \
-        test $(md5sum $__arch_output | awk NF=1) = $__md5sum
+        test $(sha512sum $__arch_output | awk NF=1) = $__sha512sum
     then
         _msg $__arch_basename already downloaded. skip
 
     elif _download $__arch_url $__arch_output && \
-        test $(md5sum $__arch_output | awk NF=1) = $__md5sum
+        test $(sha512sum $__arch_output | awk NF=1) = $__sha512sum
     then
         # file donwloaded without any error
         true
