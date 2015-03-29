@@ -388,7 +388,7 @@ _install_recursively_with_mirror(){
         true
 
     else
-        _msg downloading $__filebase failed
+        _msg downloading $__arch_basename failed
         return 1
     fi
 
