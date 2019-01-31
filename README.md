@@ -12,6 +12,8 @@ To install packages, issue `pac-cyg -S tmux`.
 Type `pac-cyg -Qs` to search installed packages, and `pac-cyg -R tmux`
 to remove.
 
+You have to run `pac-cyg -Sy` at least once to search or install packages.
+
 
 Options
 --------
