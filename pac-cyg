@@ -745,7 +745,7 @@ main(){
 }
 
 _arch=`_detect_arch_or_die`
-_tmpdir=`mktemp --directory --tmpdir pac-cyg.XXXXXX`
+_tmpdir=`mktemp -d`
 trap '_delete_tmpdir; exit 1' 1 2 3 15
 trap '_delete_tmpdir' EXIT
 main "$@"
